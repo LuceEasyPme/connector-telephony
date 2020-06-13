@@ -3,7 +3,8 @@
 # Copyright (C) 2015 Valentin Chemiere <valentin.chemiere@akretion.com>
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl.html).
 
-from odoo import models, fields, api
+from odoo import models, fields, api, _
+from odoo.exceptions import UserError
 
 
 class WizardMassSms(models.TransientModel):
@@ -43,11 +44,11 @@ class WizardMassSms(models.TransientModel):
     coding = fields.Selection([
         ('1', '7 bit'),
         ('2', 'Unicode')
-        ], help='The sms coding: 1 for 7 bit or 2 for unicode')
+    ], help='The sms coding: 1 for 7 bit or 2 for unicode')
     tag = fields.Char(size=256, help='An optional tag')
     nostop = fields.Boolean(
         help='Do not display STOP clause in the message, this requires that '
-             'this is not an advertising message')
+        'this is not an advertising message')
     partner_ids = fields.Many2many('res.partner', default=_default_get_partner)
 
     @api.onchange('gateway_id')
@@ -78,6 +79,16 @@ class WizardMassSms(models.TransientModel):
     def send(self):
         sms_obj = self.env['sms.sms']
         partner_obj = self.env['res.partner']
-        for partner in partner_obj.browse(self._context.get('active_ids')):
-            vals = self._prepare_sms_vals(partner)
+        sms_check = True
+        if not self._check_gateway_method():
+            sms_check = False
+        if not self._check_gateway_permission():
+            sms_check = False
+        if not self._check_sms_length():
+            sms_check = False
+        if sms_check:
+            for partner in partner_obj.browse(self._context.get('active_ids')):
+                vals = self._prepare_sms_vals(partner)
             sms_obj.create(vals)
+        else:
+            raise UserError(_("SMS send has failed. Please verify gateway method, gateway permission and sms length"))
